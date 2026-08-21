@@ -8,7 +8,6 @@ RUN npm install --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
-
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -26,4 +25,4 @@ COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
 WORKDIR /app/backend
 
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 2 --threads 4 --timeout 120 app:app"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-10000} --workers 2 --threads 4 --timeout 120 app:app"]
