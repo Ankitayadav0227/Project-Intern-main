@@ -1,51 +1,48 @@
 import os
 from urllib.parse import urlparse
 
-from dotenv import load_dotenv
 import mysql.connector
 from mysql.connector import Error
+from dotenv import load_dotenv
+from werkzeug.security import generate_password_hash
 
 load_dotenv()
 
 
+# =========================================================
+# DATABASE CONFIG
+# =========================================================
+
 def _build_db_config():
 
-    # =====================================================
-    # RAILWAY MYSQL_URL
-    # =====================================================
+    mysql_url = (
+        os.getenv("MYSQL_URL")
+        or os.getenv("MYSQL_PUBLIC_URL")
+        or os.getenv("DATABASE_URL")
+    )
 
-    mysql_url = os.getenv("MYSQL_URL")
-
+    # Railway MYSQL_URL
     if mysql_url:
-
         try:
             parsed = urlparse(mysql_url)
 
-            print("MySQL URL detected")
-            print("MySQL host:", parsed.hostname)
-            print("MySQL port:", parsed.port)
-            print("MySQL user:", parsed.username)
-            print("MySQL database:", parsed.path.lstrip("/"))
-
-            return {
-                "host": parsed.hostname,
-                "port": parsed.port or 3306,
-                "user": parsed.username,
-                "password": parsed.password,
-                "database": parsed.path.lstrip("/")
-            }
+            if parsed.hostname:
+                return {
+                    "host": parsed.hostname,
+                    "port": parsed.port or 3306,
+                    "user": parsed.username,
+                    "password": parsed.password,
+                    "database": (
+                        parsed.path.lstrip("/")
+                        if parsed.path
+                        else None
+                    ),
+                }
 
         except Exception as exc:
+            print("MYSQL URL parsing error:", exc)
 
-            print("MYSQL_URL parsing failed:", exc)
-
-
-    # =====================================================
-    # RAILWAY INDIVIDUAL VARIABLES
-    # =====================================================
-
-    print("Using individual MYSQL variables")
-
+    # Railway MYSQL variables
     return {
         "host": os.getenv("MYSQLHOST"),
         "port": int(os.getenv("MYSQLPORT", "3306")),
@@ -54,31 +51,48 @@ def _build_db_config():
         "database": (
             os.getenv("MYSQLDATABASE")
             or os.getenv("MYSQL_DATABASE")
-        )
+        ),
     }
 
 
 DB_CONFIG = _build_db_config()
 
 
+# =========================================================
+# SAFE DATABASE CONFIG LOG
+# =========================================================
+
+def print_database_config():
+
+    print("========== DATABASE CONFIG ==========")
+    print("Host:", DB_CONFIG.get("host"))
+    print("Port:", DB_CONFIG.get("port"))
+    print("User:", DB_CONFIG.get("user"))
+    print("Database:", DB_CONFIG.get("database"))
+
+    if DB_CONFIG.get("password"):
+        print("Password: Configured")
+    else:
+        print("Password: Missing")
+
+    print("=====================================")
+
+
+# =========================================================
+# DATABASE CONNECTION
+# =========================================================
+
 def get_connection():
 
-    required = [
-        "host",
-        "user",
-        "password",
-        "database"
-    ]
+    missing = []
 
-    missing = [
-        key
-        for key in required
-        if not DB_CONFIG.get(key)
-    ]
+    for key in ["host", "user", "password", "database"]:
+        if not DB_CONFIG.get(key):
+            missing.append(key)
 
     if missing:
         raise RuntimeError(
-            "Missing MySQL configuration: "
+            "Missing MySQL environment variables: "
             + ", ".join(missing)
         )
 
@@ -90,36 +104,31 @@ def get_connection():
             user=DB_CONFIG["user"],
             password=DB_CONFIG["password"],
             database=DB_CONFIG["database"],
-            connection_timeout=15
+            connection_timeout=15,
+            autocommit=False
         )
 
         if not connection.is_connected():
             raise RuntimeError(
-                "MySQL connection was not established"
+                "MySQL connection was not established."
             )
-
-        print("MySQL connection successful")
 
         return connection
 
     except Error as exc:
 
-        print("MySQL connection failed:", exc)
+        print("MySQL connection error:", exc)
 
         raise RuntimeError(
             f"MySQL connection failed: {exc}"
         ) from exc
 
+
 # =========================================================
 # ENSURE COLUMN
 # =========================================================
 
-def _ensure_column(
-    cursor,
-    table,
-    column,
-    definition
-):
+def _ensure_column(cursor, table, column, definition):
 
     cursor.execute(
         """
@@ -129,18 +138,15 @@ def _ensure_column(
         AND table_name = %s
         AND column_name = %s
         """,
-        (table, column),
+        (table, column)
     )
 
     result = cursor.fetchone()
 
-    exists = result[0] > 0
-
-    if not exists:
+    if result and result[0] == 0:
 
         print(
-            f"Adding missing column: "
-            f"{table}.{column}"
+            f"Adding missing column: {table}.{column}"
         )
 
         cursor.execute(
@@ -171,19 +177,12 @@ def initialize_database():
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS admins (
-
                 admin_id INT AUTO_INCREMENT PRIMARY KEY,
-
-                username VARCHAR(100)
-                    NOT NULL UNIQUE,
-
-                password VARCHAR(255)
-                    NOT NULL
-
+                username VARCHAR(100) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL
             ) ENGINE=InnoDB
             """
         )
-
 
         # =================================================
         # INTERNS
@@ -192,40 +191,21 @@ def initialize_database():
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS interns (
-
                 intern_id INT AUTO_INCREMENT PRIMARY KEY,
-
-                full_name VARCHAR(150)
-                    NOT NULL,
-
-                email VARCHAR(150)
-                    NOT NULL UNIQUE,
-
-                password VARCHAR(255)
-                    NOT NULL,
-
+                full_name VARCHAR(150) NOT NULL,
+                email VARCHAR(150) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL,
                 department VARCHAR(100),
-
                 join_date DATE,
-
                 phone VARCHAR(20),
-
                 age INT,
-
                 gender VARCHAR(20),
-
                 dob DATE,
-
                 address TEXT,
-
                 profile_image VARCHAR(255)
-
             ) ENGINE=InnoDB
             """
         )
-
-
-        # Existing database migrations
 
         _ensure_column(
             cursor,
@@ -269,7 +249,6 @@ def initialize_database():
             "VARCHAR(255)"
         )
 
-
         # =================================================
         # WORK LOGS
         # =================================================
@@ -277,42 +256,23 @@ def initialize_database():
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS work_logs (
-
                 log_id INT AUTO_INCREMENT PRIMARY KEY,
-
                 intern_id INT NOT NULL,
-
                 work_date DATE NOT NULL,
-
-                task_title VARCHAR(200)
-                    NOT NULL,
-
-                description TEXT
-                    NOT NULL,
-
-                hours_worked DECIMAL(5,2)
-                    NOT NULL,
-
-                status VARCHAR(50)
-                    NOT NULL DEFAULT 'Pending',
-
+                task_title VARCHAR(200) NOT NULL,
+                description TEXT NOT NULL,
+                hours_worked DECIMAL(5,2) NOT NULL,
+                status VARCHAR(50) NOT NULL DEFAULT 'Pending',
                 file_name VARCHAR(255),
-
-                created_at TIMESTAMP
-                    DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
                 CONSTRAINT fk_worklogs_intern
-
-                    FOREIGN KEY (intern_id)
-
-                    REFERENCES interns(intern_id)
-
-                    ON DELETE CASCADE
-
+                FOREIGN KEY (intern_id)
+                REFERENCES interns(intern_id)
+                ON DELETE CASCADE
             ) ENGINE=InnoDB
             """
         )
-
 
         _ensure_column(
             cursor,
@@ -321,7 +281,6 @@ def initialize_database():
             "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
         )
 
-
         # =================================================
         # ATTENDANCE
         # =================================================
@@ -329,34 +288,22 @@ def initialize_database():
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS attendance (
-
                 attendance_id INT AUTO_INCREMENT PRIMARY KEY,
-
                 intern_id INT NOT NULL,
-
                 attendance_date DATE NOT NULL,
-
-                status VARCHAR(50)
-                    NOT NULL,
-
-                created_at TIMESTAMP
-                    DEFAULT CURRENT_TIMESTAMP,
+                status VARCHAR(50) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
                 CONSTRAINT fk_attendance_intern
-
-                    FOREIGN KEY (intern_id)
-
-                    REFERENCES interns(intern_id)
-
-                    ON DELETE CASCADE,
+                FOREIGN KEY (intern_id)
+                REFERENCES interns(intern_id)
+                ON DELETE CASCADE,
 
                 UNIQUE KEY unique_intern_date
-                    (intern_id, attendance_date)
-
+                (intern_id, attendance_date)
             ) ENGINE=InnoDB
             """
         )
-
 
         _ensure_column(
             cursor,
@@ -365,7 +312,6 @@ def initialize_database():
             "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
         )
 
-
         # =================================================
         # LEAVE REQUESTS
         # =================================================
@@ -373,35 +319,21 @@ def initialize_database():
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS leave_requests (
-
                 leave_id INT AUTO_INCREMENT PRIMARY KEY,
-
                 intern_id INT NOT NULL,
-
                 from_date DATE NOT NULL,
-
                 to_date DATE NOT NULL,
-
                 reason TEXT NOT NULL,
-
-                status VARCHAR(50)
-                    NOT NULL DEFAULT 'Pending',
-
-                created_at TIMESTAMP
-                    DEFAULT CURRENT_TIMESTAMP,
+                status VARCHAR(50) NOT NULL DEFAULT 'Pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
                 CONSTRAINT fk_leave_intern
-
-                    FOREIGN KEY (intern_id)
-
-                    REFERENCES interns(intern_id)
-
-                    ON DELETE CASCADE
-
+                FOREIGN KEY (intern_id)
+                REFERENCES interns(intern_id)
+                ON DELETE CASCADE
             ) ENGINE=InnoDB
             """
         )
-
 
         _ensure_column(
             cursor,
@@ -410,7 +342,6 @@ def initialize_database():
             "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
         )
 
-
         # =================================================
         # MESSAGES
         # =================================================
@@ -418,48 +349,26 @@ def initialize_database():
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
-
                 message_id INT AUTO_INCREMENT PRIMARY KEY,
-
                 intern_id INT NOT NULL,
-
-                sender VARCHAR(20)
-                    NOT NULL,
-
+                sender VARCHAR(20) NOT NULL,
                 sender_name VARCHAR(150),
-
                 message TEXT,
-
                 file_name VARCHAR(255),
-
                 file_url VARCHAR(500),
-
-                is_read BOOLEAN
-                    NOT NULL DEFAULT FALSE,
-
-                created_at TIMESTAMP
-                    DEFAULT CURRENT_TIMESTAMP,
+                is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
                 CONSTRAINT fk_messages_intern
+                FOREIGN KEY (intern_id)
+                REFERENCES interns(intern_id)
+                ON DELETE CASCADE,
 
-                    FOREIGN KEY (intern_id)
-
-                    REFERENCES interns(intern_id)
-
-                    ON DELETE CASCADE,
-
-                INDEX idx_messages_intern
-                    (intern_id),
-
-                INDEX idx_messages_created
-                    (created_at)
-
+                INDEX idx_messages_intern (intern_id),
+                INDEX idx_messages_created (created_at)
             ) ENGINE=InnoDB
             """
         )
-
-
-        # Existing messages table migrations
 
         _ensure_column(
             cursor,
@@ -503,7 +412,6 @@ def initialize_database():
             "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
         )
 
-
         # =================================================
         # DEFAULT ADMIN
         # =================================================
@@ -519,7 +427,6 @@ def initialize_database():
 
         admin_exists = cursor.fetchone()
 
-
         if admin_exists is None:
 
             print("Creating default admin...")
@@ -531,20 +438,14 @@ def initialize_database():
             cursor.execute(
                 """
                 INSERT INTO admins
-                    (username, password)
-                VALUES
-                    (%s, %s)
+                (username, password)
+                VALUES (%s, %s)
                 """,
                 (
                     "admin",
-                    hashed_password,
-                ),
+                    hashed_password
+                )
             )
-
-
-        # =================================================
-        # COMMIT
-        # =================================================
 
         conn.commit()
 
@@ -553,7 +454,6 @@ def initialize_database():
         print("=====================================")
 
         return True
-
 
     except Exception as exc:
 
@@ -565,7 +465,6 @@ def initialize_database():
         )
 
         raise
-
 
     finally:
 
@@ -590,7 +489,6 @@ def database_status():
 
         database = cursor.fetchone()[0]
 
-
         cursor.execute(
             """
             SELECT table_name
@@ -605,12 +503,10 @@ def database_status():
             for row in cursor.fetchall()
         ]
 
-
         return {
             "database": database,
-            "tables": tables,
+            "tables": tables
         }
-
 
     finally:
 
@@ -629,9 +525,7 @@ def test_database_connection():
         conn = get_connection()
         cursor = conn.cursor()
 
-        cursor.execute(
-            "SELECT 1"
-        )
+        cursor.execute("SELECT 1")
 
         result = cursor.fetchone()
 
@@ -641,20 +535,19 @@ def test_database_connection():
         return {
             "success": True,
             "message": "MySQL connection successful",
-            "result": result[0],
+            "result": result[0]
         }
-
 
     except Exception as exc:
 
         return {
             "success": False,
-            "message": str(exc),
+            "message": str(exc)
         }
 
 
 # =========================================================
-# PRINT CONFIG
+# SAFE CONFIG PRINT
 # =========================================================
 
 print_database_config()

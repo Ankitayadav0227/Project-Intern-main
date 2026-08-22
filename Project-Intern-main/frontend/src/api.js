@@ -2,7 +2,7 @@ import axios from "axios";
 
 const API_URL =
   import.meta.env.VITE_API_URL ||
-  "https://project-intern-main-production.up.railway.app";
+  window.location.origin;
 
 const api = axios.create({
   baseURL: API_URL,

@@ -12,28 +12,15 @@ from routes.messages import messages_bp
 from db import initialize_database, database_status, DB_CONFIG
 
 import os
-
-
-# =========================================================
-# FLASK APP
-# =========================================================
+import time
 
 app = Flask(__name__)
 
-# CORS
-# Allows local frontend and deployed frontend to communicate
-CORS(
-    app,
-    resources={
-        r"/*": {
-            "origins": "*"
-        }
-    }
-)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 
 # =========================================================
-# UPLOAD CONFIGURATION
+# UPLOADS
 # =========================================================
 
 UPLOAD_FOLDER = os.path.join(
@@ -44,7 +31,6 @@ UPLOAD_FOLDER = os.path.join(
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
 os.makedirs(
     os.path.join(UPLOAD_FOLDER, "messages"),
     exist_ok=True
@@ -54,79 +40,120 @@ os.makedirs(
 # =========================================================
 # DATABASE INITIALIZATION
 # =========================================================
-#
-# IMPORTANT:
-# Do NOT initialize MySQL while Gunicorn is importing app.py.
-#
-# Railway must first start Flask/Gunicorn successfully.
-# Database initialization can be triggered separately.
-#
-# The old code:
-#
-# initialize_with_retry()
-#
-# has intentionally been removed from startup.
-#
-
 
 def initialize_with_retry():
 
-    if not all(
-        DB_CONFIG.get(key)
-        for key in (
-            "host",
-            "user",
-            "password",
-            "database"
-        )
-    ):
+    print("Starting database initialization...")
+
+    print(
+        "Database host:",
+        DB_CONFIG.get("host")
+    )
+
+    print(
+        "Database user:",
+        DB_CONFIG.get("user")
+    )
+
+    print(
+        "Database:",
+        DB_CONFIG.get("database")
+    )
+
+    print(
+        "Database password:",
+        "Configured"
+        if DB_CONFIG.get("password")
+        else "Missing"
+    )
+
+    # If configuration is missing, don't crash Flask
+    required = [
+        "host",
+        "user",
+        "password",
+        "database"
+    ]
+
+    missing = [
+        key
+        for key in required
+        if not DB_CONFIG.get(key)
+    ]
+
+    if missing:
 
         print(
-            "Database environment variables are not configured."
+            "WARNING: Missing database configuration:",
+            missing
+        )
+
+        print(
+            "Flask will continue running."
         )
 
         return False
 
 
-    try:
+    # Try database connection several times
 
-        initialize_database()
+    for attempt in range(1, 6):
 
-        print(
-            "Database schema is ready."
-        )
+        try:
 
-        return True
+            initialize_database()
 
-    except Exception as exc:
+            print(
+                "DATABASE INITIALIZATION SUCCESS"
+            )
 
-        print(
-            "Database initialization failed:",
-            exc
-        )
+            return True
 
-        return False
+        except Exception as exc:
+
+            print(
+                f"Database initialization attempt "
+                f"{attempt}/5 failed:"
+            )
+
+            print(exc)
+
+            if attempt < 5:
+
+                time.sleep(3)
+
+
+    print(
+        "WARNING: MySQL initialization failed."
+    )
+
+    print(
+        "Flask will continue running."
+    )
+
+    return False
+
+
+# IMPORTANT:
+# Database failure should NOT stop Flask
+
+initialize_with_retry()
 
 
 # =========================================================
-# REGISTER BLUEPRINTS
+# BLUEPRINTS
 # =========================================================
 
 app.register_blueprint(auth_bp)
-
 app.register_blueprint(admin_bp)
-
 app.register_blueprint(intern_bp)
-
 app.register_blueprint(attendance_bp)
-
 app.register_blueprint(leave_bp)
-
 app.register_blueprint(messages_bp)
 
 
 # =========================================================
-# FRONTEND LOCATION
+# FRONTEND
 # =========================================================
 
 FRONTEND_FOLDER = os.path.abspath(
@@ -138,7 +165,7 @@ FRONTEND_FOLDER = os.path.abspath(
 
 
 # =========================================================
-# API TEST ROUTE
+# API HOME
 # =========================================================
 
 @app.route("/api")
@@ -151,7 +178,7 @@ def api_home():
 
 
 # =========================================================
-# HEALTH CHECK
+# HEALTH
 # =========================================================
 
 @app.route("/health")
@@ -161,30 +188,33 @@ def health():
 
         status = database_status()
 
-        required = {
+        required_tables = {
             "admins",
             "interns",
             "work_logs",
             "attendance",
             "leave_requests",
-            "messages",
+            "messages"
         }
 
+        existing_tables = set(
+            status.get("tables", [])
+        )
+
         missing = sorted(
-            required - set(status.get("tables", []))
+            required_tables - existing_tables
         )
 
         return jsonify({
 
-            "success": not missing,
+            "success": len(missing) == 0,
 
             "database": status.get(
                 "database"
             ),
 
             "tables": status.get(
-                "tables",
-                []
+                "tables"
             ),
 
             "missing_tables": missing
@@ -193,11 +223,6 @@ def health():
 
 
     except Exception as exc:
-
-        print(
-            "Health check database error:",
-            exc
-        )
 
         return jsonify({
 
@@ -209,7 +234,7 @@ def health():
 
 
 # =========================================================
-# DATABASE TEST
+# TEST DATABASE
 # =========================================================
 
 @app.route("/test-db")
@@ -229,11 +254,6 @@ def test_db():
 
 
     except Exception as exc:
-
-        print(
-            "Database test failed:",
-            exc
-        )
 
         return jsonify({
 
@@ -258,7 +278,7 @@ def uploaded_file(filename):
 
 
 # =========================================================
-# UPLOAD PROFILE IMAGE
+# PROFILE IMAGE
 # =========================================================
 
 @app.route(
@@ -273,15 +293,11 @@ def upload_profile(intern_id):
             "profile_image"
         )
 
-
         if not file or not file.filename:
 
             return jsonify({
-
                 "success": False,
-
                 "message": "No file selected"
-
             }), 400
 
 
@@ -289,18 +305,14 @@ def upload_profile(intern_id):
             file.filename
         )
 
-
         filename = f"{intern_id}_{filename}"
-
 
         filepath = os.path.join(
             app.config["UPLOAD_FOLDER"],
             filename
         )
 
-
         file.save(filepath)
-
 
         image_path = f"uploads/{filename}"
 
@@ -310,7 +322,6 @@ def upload_profile(intern_id):
         conn = get_connection()
 
         cursor = conn.cursor()
-
 
         try:
 
@@ -328,11 +339,9 @@ def upload_profile(intern_id):
 
             conn.commit()
 
-
         finally:
 
             cursor.close()
-
             conn.close()
 
 
@@ -351,11 +360,6 @@ def upload_profile(intern_id):
 
     except Exception as exc:
 
-        print(
-            "Profile upload error:",
-            exc
-        )
-
         return jsonify({
 
             "success": False,
@@ -366,16 +370,13 @@ def upload_profile(intern_id):
 
 
 # =========================================================
-# REACT ROUTER / FRONTEND
+# REACT ROUTER
 # =========================================================
 
 @app.route(
     "/",
-    defaults={
-        "path": ""
-    }
+    defaults={"path": ""}
 )
-
 @app.route(
     "/<path:path>"
 )
@@ -386,8 +387,6 @@ def serve_react(path):
         path
     )
 
-
-    # Serve existing frontend files
     if path and os.path.isfile(file_path):
 
         return send_from_directory(
@@ -395,8 +394,6 @@ def serve_react(path):
             path
         )
 
-
-    # React Router fallback
     return send_from_directory(
         FRONTEND_FOLDER,
         "index.html"
@@ -404,7 +401,7 @@ def serve_react(path):
 
 
 # =========================================================
-# LOCAL DEVELOPMENT
+# START FLASK
 # =========================================================
 
 if __name__ == "__main__":
@@ -416,8 +413,11 @@ if __name__ == "__main__":
         )
     )
 
+    print(
+        f"Starting Flask on port {port}"
+    )
+
     app.run(
         host="0.0.0.0",
-        port=port,
-        debug=False
+        port=port
     )
