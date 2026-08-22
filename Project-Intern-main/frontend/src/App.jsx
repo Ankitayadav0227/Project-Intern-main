@@ -15,44 +15,34 @@ import ManageInterns from "./pages/ManageInterns";
 import AttendanceAdmin from "./pages/AttendanceAdmin";
 import LeaveAdmin from "./pages/LeaveAdmin";
 import Analytics from "./pages/Analytics";
-import AdminMessages from "./pages/AdminMessages";
 
 // ================= INTERN =================
 import InternDashboard from "./pages/InternDashboard";
-import InternProfile from "./pages/InternProfile";
-import LeaveIntern from "./pages/LeaveIntern";
-import InternMessages from "./pages/InternMessage";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
 
-        {/* ================================================= */}
-        {/* AUTHENTICATION */}
-        {/* ================================================= */}
-
-        {/* Default page = LOGIN */}
+        {/* FIRST PAGE = REGISTER */}
         <Route
           path="/"
-          element={<Login />}
+          element={<Navigate to="/register" replace />}
         />
 
-        {/* Login */}
-        <Route
-          path="/login"
-          element={<Login />}
-        />
-
-        {/* Registration */}
+        {/* REGISTER */}
         <Route
           path="/register"
           element={<InternSignup />}
         />
 
-        {/* ================================================= */}
-        {/* ADMIN PAGES */}
-        {/* ================================================= */}
+        {/* LOGIN */}
+        <Route
+          path="/login"
+          element={<Login />}
+        />
+
+        {/* ================= ADMIN ================= */}
 
         <Route
           path="/admin"
@@ -60,7 +50,7 @@ function App() {
         />
 
         <Route
-          path="/manage-interns"
+          path="/ManageInterns"
           element={<ManageInterns />}
         />
 
@@ -75,51 +65,21 @@ function App() {
         />
 
         <Route
-          path="/analytics"
+          path="/Analytics"
           element={<Analytics />}
         />
 
-        <Route
-          path="/admin/messages"
-          element={<AdminMessages />}
-        />
-
-        {/* ================================================= */}
-        {/* INTERN PAGES */}
-        {/* ================================================= */}
+        {/* ================= INTERN ================= */}
 
         <Route
           path="/intern"
           element={<InternDashboard />}
         />
 
-        <Route
-          path="/intern/profile"
-          element={<InternProfile />}
-        />
-
-        <Route
-          path="/intern/leave"
-          element={<LeaveIntern />}
-        />
-
-        <Route
-          path="/intern/messages"
-          element={<InternMessages />}
-        />
-
-        {/* ================================================= */}
-        {/* INVALID ROUTE */}
-        {/* ================================================= */}
-
+        {/* INVALID URL */}
         <Route
           path="*"
-          element={
-            <Navigate
-              to="/"
-              replace
-            />
-          }
+          element={<Navigate to="/register" replace />}
         />
 
       </Routes>
