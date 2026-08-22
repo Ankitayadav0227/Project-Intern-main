@@ -521,12 +521,10 @@ def database_status():
 def test_database_connection():
 
     try:
-
         conn = get_connection()
         cursor = conn.cursor()
 
         cursor.execute("SELECT 1")
-
         result = cursor.fetchone()
 
         cursor.close()
@@ -544,10 +542,3 @@ def test_database_connection():
             "success": False,
             "message": str(exc)
         }
-
-
-# =========================================================
-# SAFE CONFIG PRINT
-# =========================================================
-
-print_database_config()
