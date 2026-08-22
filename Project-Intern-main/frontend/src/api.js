@@ -2,7 +2,8 @@ import axios from "axios";
 
 const API_URL =
   import.meta.env.VITE_API_URL ||
- "https://project-intern-backend-4pax.onrender.com"
+  "https://project-intern-main-production.up.railway.app";
+
 const api = axios.create({
   baseURL: API_URL,
   timeout: 20000,
