@@ -1,45 +1,51 @@
 import os
 from urllib.parse import urlparse
 
+from dotenv import load_dotenv
 import mysql.connector
 from mysql.connector import Error
-from dotenv import load_dotenv
-from werkzeug.security import generate_password_hash
 
 load_dotenv()
 
 
-# =========================================================
-# DATABASE CONFIGURATION
-# =========================================================
-
 def _build_db_config():
 
-    mysql_url = os.getenv("MYSQL_URL") or os.getenv("DATABASE_URL")
+    # =====================================================
+    # RAILWAY MYSQL_URL
+    # =====================================================
 
-    # Railway MYSQL_URL / DATABASE_URL
+    mysql_url = os.getenv("MYSQL_URL")
+
     if mysql_url:
 
         try:
             parsed = urlparse(mysql_url)
 
-            if parsed.hostname:
-                return {
-                    "host": parsed.hostname,
-                    "port": parsed.port or 3306,
-                    "user": parsed.username,
-                    "password": parsed.password,
-                    "database": (
-                        parsed.path.lstrip("/")
-                        if parsed.path
-                        else None
-                    ),
-                }
+            print("MySQL URL detected")
+            print("MySQL host:", parsed.hostname)
+            print("MySQL port:", parsed.port)
+            print("MySQL user:", parsed.username)
+            print("MySQL database:", parsed.path.lstrip("/"))
+
+            return {
+                "host": parsed.hostname,
+                "port": parsed.port or 3306,
+                "user": parsed.username,
+                "password": parsed.password,
+                "database": parsed.path.lstrip("/")
+            }
 
         except Exception as exc:
-            print("Failed to parse MySQL URL:", exc)
 
-    # Railway MYSQL variables
+            print("MYSQL_URL parsing failed:", exc)
+
+
+    # =====================================================
+    # RAILWAY INDIVIDUAL VARIABLES
+    # =====================================================
+
+    print("Using individual MYSQL variables")
+
     return {
         "host": os.getenv("MYSQLHOST"),
         "port": int(os.getenv("MYSQLPORT", "3306")),
@@ -48,36 +54,12 @@ def _build_db_config():
         "database": (
             os.getenv("MYSQLDATABASE")
             or os.getenv("MYSQL_DATABASE")
-        ),
+        )
     }
 
 
 DB_CONFIG = _build_db_config()
 
-
-# =========================================================
-# DATABASE CONFIG LOG
-# =========================================================
-
-def print_database_config():
-
-    print("========== DATABASE CONFIG ==========")
-    print("Host:", DB_CONFIG.get("host"))
-    print("Port:", DB_CONFIG.get("port"))
-    print("User:", DB_CONFIG.get("user"))
-    print("Database:", DB_CONFIG.get("database"))
-
-    if DB_CONFIG.get("password"):
-        print("Password: Configured")
-    else:
-        print("Password: Missing")
-
-    print("=====================================")
-
-
-# =========================================================
-# DATABASE CONNECTION
-# =========================================================
 
 def get_connection():
 
@@ -85,7 +67,7 @@ def get_connection():
         "host",
         "user",
         "password",
-        "database",
+        "database"
     ]
 
     missing = [
@@ -95,9 +77,8 @@ def get_connection():
     ]
 
     if missing:
-
         raise RuntimeError(
-            "Missing MySQL environment variables: "
+            "Missing MySQL configuration: "
             + ", ".join(missing)
         )
 
@@ -109,26 +90,25 @@ def get_connection():
             user=DB_CONFIG["user"],
             password=DB_CONFIG["password"],
             database=DB_CONFIG["database"],
-            connection_timeout=15,
-            autocommit=False,
+            connection_timeout=15
         )
 
         if not connection.is_connected():
-
             raise RuntimeError(
-                "MySQL connection was not established."
+                "MySQL connection was not established"
             )
+
+        print("MySQL connection successful")
 
         return connection
 
     except Error as exc:
 
-        print("MySQL connection error:", exc)
+        print("MySQL connection failed:", exc)
 
         raise RuntimeError(
             f"MySQL connection failed: {exc}"
         ) from exc
-
 
 # =========================================================
 # ENSURE COLUMN
